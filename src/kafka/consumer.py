@@ -6,12 +6,7 @@ from kafka import KafkaConsumer
 from sqlalchemy import create_engine, text
 from sqlalchemy.exc import OperationalError
 
-from src.raw import (
-    is_file_already_loaded,
-    mark_file_as_loaded,
-    get_or_create_loading_batch,
-    mark_batch_completed,
-)
+from src.raw import create_new_batch, mark_batch_completed
 
 
 DB_URL = os.getenv(
@@ -22,6 +17,7 @@ DB_URL = os.getenv(
 KAFKA_TOPIC = os.getenv("KAFKA_TOPIC", "raw-transactions")
 KAFKA_BOOTSTRAP = os.getenv("KAFKA_BOOTSTRAP", "kafka:9092")
 KAFKA_GROUP_ID = os.getenv("KAFKA_GROUP_ID", "raw-consumer")
+BATCH_SIZE = int(os.getenv("BATCH_SIZE", "100000"))
 
 
 def get_engine():
@@ -68,57 +64,41 @@ def consume_kafka_to_raw():
 
     print("Kafka consumer started")
 
+    current_batch_no = create_new_batch(engine)
+    rows_in_batch = 0
+
     for msg in consumer:
         data = msg.value
         msg_type = data.get("type")
 
         try:
-            if msg_type == "file_complete":
-                file_name = data.get("source_file")
-                file_hash = data.get("file_hash")
+            # koniec danych → zamykamy batch
+            if msg_type == "transfer_complete":
+                if rows_in_batch > 0:
+                    mark_batch_completed(engine, current_batch_no)
+                    print(f"Final batch closed: {current_batch_no}")
 
-                if not file_name or not file_hash:
-                    print("Skipping invalid file_complete message")
-                    consumer.commit()
-                    continue
-
-                if not is_file_already_loaded(engine, file_name, file_hash):
-                    mark_batch_completed(engine, file_name, file_hash)
-                    mark_file_as_loaded(engine, file_name, file_hash)
-                    print(f"File completed and marked as loaded: {file_name}")
-                else:
-                    print(f"File already marked as loaded: {file_name}")
+                # start nowego batcha dla przyszłych danych
+                current_batch_no = create_new_batch(engine)
+                rows_in_batch = 0
 
                 consumer.commit()
                 continue
 
-            if msg_type != "data":
-                print(f"Skipping unknown message type: {msg_type}")
-                consumer.commit()
-                continue
+            # batch rotation
+            if rows_in_batch > 0 and rows_in_batch % BATCH_SIZE == 0:
+                mark_batch_completed(engine, current_batch_no)
+                print(f"Batch completed: {current_batch_no}")
 
-            file_name = data.get("source_file")
-            file_hash = data.get("file_hash")
+                current_batch_no = create_new_batch(engine)
+                rows_in_batch = 0
 
-            if not file_name or not file_hash:
-                print("Skipping message without source_file or file_hash")
-                consumer.commit()
-                continue
-
-            if is_file_already_loaded(engine, file_name, file_hash):
-                print(f"Skipping already loaded file: {file_name}")
-                consumer.commit()
-                continue
-
-            batch_no = get_or_create_loading_batch(engine, file_name, file_hash)
-
+            # insert
             with engine.begin() as conn:
                 conn.execute(
                     text("""
                         INSERT INTO raw.transactions_raw (
                             batch_no,
-                            source_file,
-                            file_hash,
                             transaction_id,
                             customer_id,
                             customer_name,
@@ -131,8 +111,6 @@ def consume_kafka_to_raw():
                             status
                         ) VALUES (
                             :batch_no,
-                            :source_file,
-                            :file_hash,
                             :transaction_id,
                             :customer_id,
                             :customer_name,
@@ -146,9 +124,7 @@ def consume_kafka_to_raw():
                         )
                     """),
                     {
-                        "batch_no": batch_no,
-                        "source_file": file_name,
-                        "file_hash": file_hash,
+                        "batch_no": current_batch_no,
                         "transaction_id": data.get("transaction_id"),
                         "customer_id": data.get("customer_id"),
                         "customer_name": data.get("customer_name"),
@@ -162,7 +138,12 @@ def consume_kafka_to_raw():
                     },
                 )
 
-            print(f"Inserted row into RAW: batch_no={batch_no}, source_file={file_name}")
+            rows_in_batch += 1
+
+            print(
+                f"Inserted row → batch={current_batch_no}, row={rows_in_batch}"
+            )
+
             consumer.commit()
 
         except Exception as e:

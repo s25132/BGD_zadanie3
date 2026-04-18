@@ -39,12 +39,10 @@ Cel: przechowywanie surowych, historycznych danych (append-only)
 - Wczytuje dane z pliku CSV w partiach (chunkach)
 - Oblicza hash pliku i sprawdza, czy ten sam plik (nazwa + hash) został już wcześniej załadowany
 - Ładuje tylko nowe pliki, dzięki czemu unika ponownego przetwarzania tych samych danych
-- Tworzy lub pobiera identyfikator batcha (batch_no) na podstawie tabeli raw.batch_control
+- Przypisuje komunikatom odpowiedni numer batch 
 - Ustawia status batcha na loading na początku procesu ładowania
-- Przypisuje wszystkie rekordy z danego pliku do jednego batch_no
-- Dodaje metadane: source_file, file_hash, loaded_at
 - Zapisuje dane do tabeli: raw.transactions_raw
-- Po zakończeniu przetwarzania całego pliku oznacza batch jako completed w tabeli raw.batch_controlo i rejestruje plik w tabeli raw.ingestion_log
+- Po zakończeniu przetwarzania całego pliku oznacza batch jako completed w tabeli raw.batch_control i rejestruje plik w tabeli raw.ingestion_log
 
 Cechy:
 
@@ -109,37 +107,29 @@ Cechy:
 
 
 ## Kafka
-### Producer – producer.py
+### Producer – src/kafka/producer.py
 
 Cel: publikacja danych z pliku CSV do topicu Kafka
 
 - Odczytuje dane z pliku CSV partiami
-- Oblicza hash pliku, który jednoznacznie identyfikuje źródło danych
 - Dla każdego rekordu tworzy komunikat JSON typu data
-- Do każdego komunikatu dołącza metadane: source_file, file_hash
 - Wysyła wszystkie rekordy do topicu Kafka
-- Po zakończeniu wysyłania danych publikuje komunikat file_complete
 
 Cechy:
 - możliwość uruchamiania niezależnie od Airflow (profil producer)
 
-### Consumer – consumer.py
+### Consumer – src/kafka/consumer.py
 
 Cel: odbiór komunikatów z Kafka i zapis danych do warstwy RAW
 
 - Nasłuchuje komunikatów na topicu Kafka
-- Odbiera komunikaty typu data oraz file_complete
-- Tworzy lub pobiera batch_no dla pliku
+- Przypisuje komunikatom odpowiedni numer batch 
 - Zapisuje rekord do tabeli raw.transactions_raw
 - Oznacza batch jako completed w tabeli raw.batch_control
-- Zapisuje informację o załadowanym pliku do raw.ingestion_log
-- Pomija pliki, które zostały już wcześniej załadowane
 
 Cechy:
 
 - bezpieczne ładowanie danych z Kafka do RAW
-- kontrola kompletności batcha przy użyciu raw.batch_control
-- brak oznaczania batcha jako gotowego przed zakończeniem całego pliku
 - możliwość współpracy z cyklicznie uruchamianym pipeline’em Airflow
 
 ### Integracja Kafka z dalszym pipeline’em

@@ -47,8 +47,6 @@ def build_silver_spark(engine, jdbc_url, db_properties, load_mode="incremental")
         (
             SELECT
                 batch_no,
-                source_file,
-                file_hash,
                 transaction_id,
                 customer_id,
                 customer_name,
@@ -124,8 +122,6 @@ def build_silver_spark(engine, jdbc_url, db_properties, load_mode="incremental")
         df = df.select(
             "transaction_id",
             "batch_no",
-            "source_file",
-            "file_hash",
             "customer_id",
             "customer_name",
             "merchant_id",
@@ -161,8 +157,6 @@ def build_silver_spark(engine, jdbc_url, db_properties, load_mode="incremental")
                 INSERT INTO silver.transactions_clean (
                     transaction_id,
                     batch_no,
-                    source_file,
-                    file_hash,
                     customer_id,
                     customer_name,
                     merchant_id,
@@ -179,8 +173,6 @@ def build_silver_spark(engine, jdbc_url, db_properties, load_mode="incremental")
                 SELECT
                     transaction_id,
                     batch_no,
-                    source_file,
-                    file_hash,
                     customer_id,
                     customer_name,
                     merchant_id,
@@ -198,8 +190,6 @@ def build_silver_spark(engine, jdbc_url, db_properties, load_mode="incremental")
                 ON CONFLICT (transaction_id) DO UPDATE
                 SET
                     batch_no = EXCLUDED.batch_no,
-                    source_file = EXCLUDED.source_file,
-                    file_hash = EXCLUDED.file_hash,
                     customer_id = EXCLUDED.customer_id,
                     customer_name = EXCLUDED.customer_name,
                     merchant_id = EXCLUDED.merchant_id,
