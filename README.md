@@ -1,4 +1,4 @@
-# BGD_zadanie2
+# BGD_zadanie3
 
 ## Cel zadania 
 Celem projektu jest zaprojektowanie i implementacja skalowalnego pipeline’u przetwarzania danych transakcyjnych, który przekształca surowe, potencjalnie błędne dane w wysokiej jakości model analityczny (warstwa GOLD), umożliwiający wiarygodne raportowanie i analizę biznesową.
@@ -199,15 +199,6 @@ postgres/init/02-init-medallion.sql
 ```SELECT count(1) FROM silver.transactions_clean```
 
 ```select * from gold.fact_transactions limit 1000```
-
-
-```SELECT 
-    schemaname,
-    relname AS table_name,
-    pg_total_relation_size(relid) / 1024 / 1024 / 1024 AS size_gb,
-	pg_total_relation_size(relid) / 1024 / 1024 AS mb_gb
-FROM pg_catalog.pg_statio_user_tables
-ORDER BY size_gb DESC```
 
 ## Możliwa konfiguracja z GUI airflow (file i load_mode)
 
